@@ -1,5 +1,5 @@
 import express from "express";
-import { registerUser, loginUser, getProfile } from "../controllers/authController.js";
+import { registerUser, loginUser, getProfile, adminLogin } from "../controllers/authController.js";
 import { protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -7,6 +7,9 @@ const router = express.Router();
 // Public routes
 router.post("/register", registerUser);
 router.post("/login", loginUser);
+
+// admin login
+router.post("/admin/login", adminLogin);
 
 // Protected route
 router.get("/profile", protect, getProfile);
