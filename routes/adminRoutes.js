@@ -1,9 +1,9 @@
-// routes/adminRoutes.js
 import express from 'express';
 import User from '../models/userModel.js';
-// Import your existing auth middleware
-import { authMiddleware } from '../middleware/authMiddleware.js';
 import Course from '../models/courseModel.js';
+import Product from '../models/productModel.js';
+import { authMiddleware } from '../middleware/authMiddleware.js';
+import Seller from '../models/sellerModel.js';
 
 const router = express.Router();
 
@@ -11,35 +11,22 @@ const router = express.Router();
 const isAdmin = async (req, res, next) => {
   try {
     const user = await User.findById(req.user.id);
-    
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    if (user.role !== 'admin') {
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (user.role !== 'admin')
       return res.status(403).json({ message: 'Access denied. Admin only.' });
-    }
-
     next();
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-// GET Admin Dashboard Stats
+// ================= Dashboard Stats =================
 router.get('/stats', authMiddleware, isAdmin, async (req, res) => {
   try {
     const totalUsers = await User.countDocuments();
-    
-    // If you have Course and Product models, import and count them
-    // const Course = require('../models/Course');
-    // const Product = require('../models/Product');
-    // const totalCourses = await Course.countDocuments();
-    // const totalProducts = await Product.countDocuments();
-    
-    const totalCourses = 0; // Replace with actual count
-    const totalProducts = 0; // Replace with actual count
-    
+    const totalCourses = await Course.countDocuments();
+    const totalProducts = await Product.countDocuments();
+
     const recentUsers = await User.find()
       .select('-password')
       .sort({ createdAt: -1 })
@@ -58,47 +45,70 @@ router.get('/stats', authMiddleware, isAdmin, async (req, res) => {
   }
 });
 
-// GET All Users with pagination
+// ================= Users =================
 router.get('/users', authMiddleware, isAdmin, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
+    // Fetch normal users and admins
     const users = await User.find()
       .select('-password')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
 
-    const total = await User.countDocuments();
+    // Fetch sellers
+    const sellers = await Seller.find()
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    // Add role field to sellers (so front-end can display)
+    const sellersWithRole = sellers.map((seller) => ({
+      ...seller,
+      role: 'seller',
+    }));
+
+    // Merge users + sellers
+    const allUsers = [...users, ...sellersWithRole];
+
+    // Sort merged users by createdAt descending
+    allUsers.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    // Total count
+    const totalUsersCount =
+      (await User.countDocuments()) + (await Seller.countDocuments());
+
+    // Pagination (calculate pages based on total count)
+    const totalPages = Math.ceil(totalUsersCount / limit);
+
+    // Slice the merged array for current page
+    const paginatedUsers = allUsers.slice(skip, skip + limit);
 
     res.json({
-      users,
+      users: paginatedUsers,
       pagination: {
-        total,
+        total: totalUsersCount,
         page,
-        pages: Math.ceil(total / limit),
+        pages: totalPages,
       },
     });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
-// DELETE User
+
 router.delete('/users/:id', authMiddleware, isAdmin, async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
-
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    // Don't allow deleting yourself
-    if (user._id.toString() === req.user.id) {
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (user._id.toString() === req.user.id)
       return res.status(400).json({ message: 'Cannot delete your own account' });
-    }
 
     await User.findByIdAndDelete(req.params.id);
     res.json({ message: 'User deleted successfully' });
@@ -107,19 +117,19 @@ router.delete('/users/:id', authMiddleware, isAdmin, async (req, res) => {
   }
 });
 
-// GET All Courses with pagination (when you have Course model)
+// ================= Courses =================
 router.get('/courses', authMiddleware, isAdmin, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    // Import Course model when you create it
     const courses = await Course.find()
       .populate('createdBy', 'name email')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
+
     const total = await Course.countDocuments();
 
     res.json({
@@ -135,43 +145,39 @@ router.get('/courses', authMiddleware, isAdmin, async (req, res) => {
   }
 });
 
-// DELETE Course (when you have Course model)
 router.delete('/courses/:id', authMiddleware, isAdmin, async (req, res) => {
   try {
-    // const course = await Course.findById(req.params.id);
-    // if (!course) {
-    //   return res.status(404).json({ message: 'Course not found' });
-    // }
-    // await Course.findByIdAndDelete(req.params.id);
-    
+    const course = await Course.findById(req.params.id);
+    if (!course) return res.status(404).json({ message: 'Course not found' });
+
+    await Course.findByIdAndDelete(req.params.id);
     res.json({ message: 'Course deleted successfully' });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
-// GET All Products with pagination (when you have Product model)
+// ================= Products =================
 router.get('/products', authMiddleware, isAdmin, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    // Import Product model when you create it
-    // const products = await Product.find()
-    //   .populate('seller', 'name email')
-    //   .sort({ createdAt: -1 })
-    //   .skip(skip)
-    //   .limit(limit);
-    // const total = await Product.countDocuments();
+    const products = await Product.find()
+      .populate('createdBy', 'name email')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
 
-    // Temporary response
+    const total = await Product.countDocuments();
+
     res.json({
-      products: [],
+      products,
       pagination: {
-        total: 0,
+        total,   // ✅ fixed from previous mistake
         page,
-        pages: 0,
+        pages: Math.ceil(total / limit),
       },
     });
   } catch (error) {
@@ -179,15 +185,12 @@ router.get('/products', authMiddleware, isAdmin, async (req, res) => {
   }
 });
 
-// DELETE Product (when you have Product model)
 router.delete('/products/:id', authMiddleware, isAdmin, async (req, res) => {
   try {
-    // const product = await Product.findById(req.params.id);
-    // if (!product) {
-    //   return res.status(404).json({ message: 'Product not found' });
-    // }
-    // await Product.findByIdAndDelete(req.params.id);
-    
+    const product = await Product.findById(req.params.id);
+    if (!product) return res.status(404).json({ message: 'Product not found' });
+
+    await Product.findByIdAndDelete(req.params.id);
     res.json({ message: 'Product deleted successfully' });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
