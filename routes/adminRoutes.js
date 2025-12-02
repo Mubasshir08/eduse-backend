@@ -3,6 +3,7 @@ import express from 'express';
 import User from '../models/userModel.js';
 // Import your existing auth middleware
 import { authMiddleware } from '../middleware/authMiddleware.js';
+import Course from '../models/courseModel.js';
 
 const router = express.Router();
 
@@ -114,20 +115,19 @@ router.get('/courses', authMiddleware, isAdmin, async (req, res) => {
     const skip = (page - 1) * limit;
 
     // Import Course model when you create it
-    // const courses = await Course.find()
-    //   .populate('author', 'name email')
-    //   .sort({ createdAt: -1 })
-    //   .skip(skip)
-    //   .limit(limit);
-    // const total = await Course.countDocuments();
+    const courses = await Course.find()
+      .populate('createdBy', 'name email')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+    const total = await Course.countDocuments();
 
-    // Temporary response
     res.json({
-      courses: [],
+      courses,
       pagination: {
-        total: 0,
+        total,
         page,
-        pages: 0,
+        pages: Math.ceil(total / limit),
       },
     });
   } catch (error) {
