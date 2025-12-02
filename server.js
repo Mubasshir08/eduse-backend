@@ -10,6 +10,8 @@ import adminRoutes from "./routes/adminRoutes.js";
 import productRoutes from "./routes/productRoutes.js";
 import courseRoutes from "./routes/courseRoutes.js";
 import { errorHandler } from "./middleware/errorMiddleware.js";
+import sellerAuthRoutes from './routes/sellerAuthRoutes.js';
+
 
 // ES Module fix for __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -40,8 +42,13 @@ uploadDirs.forEach(dir => {
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
+
+// Product and course routes
 app.use("/api/products", productRoutes);
 app.use("/api/courses", courseRoutes);
+
+// Seller Auth Routes
+app.use('/api/seller', sellerAuthRoutes);
 
 // Health check route
 app.get("/", (req, res) => {

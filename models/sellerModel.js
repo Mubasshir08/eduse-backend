@@ -16,9 +16,9 @@ const sellerSchema = new mongoose.Schema({
     trim: true,
     validate: {
       validator: function(email) {
-        return email.endsWith('@edu');
+        return email.endsWith('@edu.com');
       },
-      message: 'Email must end with @edu domain'
+      message: 'Email must end with @edu.com domain'
     }
   },
   password: {
