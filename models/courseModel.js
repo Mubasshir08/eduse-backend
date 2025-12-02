@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+import mongoose from "mongoose";
 
 const courseSchema = new mongoose.Schema({
   title: {
@@ -66,4 +66,4 @@ courseSchema.index({ category: 1 });
 courseSchema.index({ level: 1 });
 courseSchema.index({ createdBy: 1 });
 
-module.exports = mongoose.model('Course', courseSchema);
+export default mongoose.model('Course', courseSchema);
