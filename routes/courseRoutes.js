@@ -1,5 +1,5 @@
 import express from 'express';
-import Course from '../models/courseModel.js';
+import Product from '../models/productModel.js';
 import { protectSeller } from '../middleware/sellerAuthMiddleware.js';
 import multer from 'multer';
 import path from 'path';
@@ -7,18 +7,18 @@ import path from 'path';
 const router = express.Router();
 
 // Configure multer
-const storage2 = multer.diskStorage({
+const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/courses/');
+    cb(null, 'uploads/products/');
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'course-' + uniqueSuffix + path.extname(file.originalname));
+    cb(null, 'product-' + uniqueSuffix + path.extname(file.originalname));
   }
 });
 
-const upload2 = multer({
-  storage: storage2,
+const upload = multer({
+  storage: storage,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowedTypes = /jpeg|jpg|png|gif|webp/;
@@ -31,43 +31,40 @@ const upload2 = multer({
   }
 });
 
-// Create course
-router.post('/', protectSeller, upload2.single('image'), async (req, res) => {
+// Create product
+router.post('/', protectSeller, upload.single('image'), async (req, res) => {
   try {
-    const { title, name, authorName, description, price, originalPrice, category, duration, level } = req.body;
+    const { title, name, authorName, description, price, originalPrice, category } = req.body;
     
     if (!req.file) {
-      return res.status(400).json({ success: false, message: 'Course image is required' });
+      return res.status(400).json({ success: false, message: 'Product image is required' });
     }
 
-    const course = await Course.create({
+    const product = await Product.create({
       title,
       name,
       authorName,
       description,
       price: parseFloat(price),
-      originalPrice: parseFloat(originalPrice),
+      originalPrice: parseFloat(originalPrice || price),
       category,
-      image: `/uploads/courses/${req.file.filename}`,
-      duration,
-      level,
+      image: `/uploads/products/${req.file.filename}`,
       createdBy: req.seller._id,
     });
 
-    res.status(201).json({ success: true, data: course });
+    res.status(201).json({ success: true, data: product });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
 });
 
-// Get all courses
+// Get all products with optional filters
 router.get('/', async (req, res) => {
   try {
-    const { category, level, minPrice, maxPrice, search } = req.query;
+    const { category, minPrice, maxPrice, search } = req.query;
     let query = {};
 
     if (category) query.category = category;
-    if (level) query.level = level;
     if (minPrice || maxPrice) {
       query.price = {};
       if (minPrice) query.price.$gte = parseFloat(minPrice);
@@ -81,95 +78,92 @@ router.get('/', async (req, res) => {
       ];
     }
 
-    const courses = await Course.find(query).populate('createdBy', 'name email').sort({ createdAt: -1 });
-    res.json({ success: true, count: courses.length, data: courses });
+    const products = await Product.find(query).populate('createdBy', 'name email').sort({ createdAt: -1 });
+    res.json({ success: true, count: products.length, data: products });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// Get single course
+// Get products by seller ID - MUST BE BEFORE /:id route
+router.get('/seller/:sellerId', async (req, res) => {
+  try {
+    const products = await Product.find({ createdBy: req.params.sellerId })
+      .populate('createdBy', 'name email')
+      .sort({ createdAt: -1 });
+    
+    res.json({ 
+      success: true, 
+      data: products,
+      count: products.length 
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Get single product by ID
 router.get('/:id', async (req, res) => {
   try {
-    const course = await Course.findById(req.params.id).populate('createdBy', 'name email');
-    if (!course) {
-      return res.status(404).json({ success: false, message: 'Course not found' });
+    const product = await Product.findById(req.params.id).populate('createdBy', 'name email');
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
     }
-    res.json({ success: true, data: course });
+    res.json({ success: true, data: product });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// Update course
-router.put('/:id', protectSeller, upload2.single('image'), async (req, res) => {
+// Update product
+router.put('/:id', protectSeller, upload.single('image'), async (req, res) => {
   try {
-    let course = await Course.findById(req.params.id);
+    let product = await Product.findById(req.params.id);
 
-    if (!course) {
-      return res.status(404).json({ success: false, message: 'Course not found' });
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
     }
 
-    if (course.createdBy.toString() !== req.seller._id.toString()) {
+    if (product.createdBy.toString() !== req.seller._id.toString()) {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
     const updateData = {
-      title: req.body.title || course.title,
-      name: req.body.name || course.name,
-      authorName: req.body.authorName || course.authorName,
-      description: req.body.description || course.description,
-      price: req.body.price ? parseFloat(req.body.price) : course.price,
-      originalPrice: req.body.originalPrice ? parseFloat(req.body.originalPrice) : course.originalPrice,
-      category: req.body.category || course.category,
-      duration: req.body.duration || course.duration,
-      level: req.body.level || course.level,
+      title: req.body.title || product.title,
+      name: req.body.name || product.name,
+      authorName: req.body.authorName || product.authorName,
+      description: req.body.description || product.description,
+      price: req.body.price ? parseFloat(req.body.price) : product.price,
+      originalPrice: req.body.originalPrice ? parseFloat(req.body.originalPrice) : product.originalPrice,
+      category: req.body.category || product.category,
     };
 
     if (req.file) {
-      updateData.image = `/uploads/courses/${req.file.filename}`;
+      updateData.image = `/uploads/products/${req.file.filename}`;
     }
 
-    course = await Course.findByIdAndUpdate(req.params.id, updateData, { new: true, runValidators: true });
-    res.json({ success: true, data: course });
+    product = await Product.findByIdAndUpdate(req.params.id, updateData, { new: true, runValidators: true });
+    res.json({ success: true, data: product });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
 });
 
-// Delete course
+// Delete product
 router.delete('/:id', protectSeller, async (req, res) => {
   try {
-    const course = await Course.findById(req.params.id);
+    const product = await Product.findById(req.params.id);
 
-    if (!course) {
-      return res.status(404).json({ success: false, message: 'Course not found' });
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
     }
 
-    if (course.createdBy.toString() !== req.seller._id.toString()) {
+    if (product.createdBy.toString() !== req.seller._id.toString()) {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-    await course.deleteOne();
-    res.json({ success: true, message: 'Course deleted successfully' });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// Enroll in course
-router.post('/:id/enroll', protectSeller, async (req, res) => {
-  try {
-    const course = await Course.findById(req.params.id);
-
-    if (!course) {
-      return res.status(404).json({ success: false, message: 'Course not found' });
-    }
-
-    course.enrolledStudents += 1;
-    await course.save();
-
-    res.json({ success: true, message: 'Successfully enrolled', data: course });
+    await product.deleteOne();
+    res.json({ success: true, message: 'Product deleted successfully' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

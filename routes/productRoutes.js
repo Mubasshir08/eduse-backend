@@ -18,7 +18,7 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({
-  storage,
+  storage: storage,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowedTypes = /jpeg|jpg|png|gif|webp/;
@@ -46,7 +46,7 @@ router.post('/', protectSeller, upload.single('image'), async (req, res) => {
       authorName,
       description,
       price: parseFloat(price),
-      originalPrice: parseFloat(originalPrice),
+      originalPrice: parseFloat(originalPrice || price),
       category,
       image: `/uploads/products/${req.file.filename}`,
       createdBy: req.seller._id,
@@ -58,7 +58,7 @@ router.post('/', protectSeller, upload.single('image'), async (req, res) => {
   }
 });
 
-// Get all products
+// Get all products with optional filters
 router.get('/', async (req, res) => {
   try {
     const { category, minPrice, maxPrice, search } = req.query;
@@ -85,7 +85,24 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Get single product
+// Get products by seller ID - MUST BE BEFORE /:id route
+router.get('/seller/:sellerId', async (req, res) => {
+  try {
+    const products = await Product.find({ createdBy: req.params.sellerId })
+      .populate('createdBy', 'name email')
+      .sort({ createdAt: -1 });
+    
+    res.json({ 
+      success: true, 
+      data: products,
+      count: products.length 
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Get single product by ID
 router.get('/:id', async (req, res) => {
   try {
     const product = await Product.findById(req.params.id).populate('createdBy', 'name email');
