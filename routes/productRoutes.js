@@ -6,7 +6,9 @@ import path from 'path';
 
 const router = express.Router();
 
-// Configure multer
+// =====================================
+// MULTER SETUP
+// =====================================
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, 'uploads/products/');
@@ -24,18 +26,19 @@ const upload = multer({
     const allowedTypes = /jpeg|jpg|png|gif|webp/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
     const mimetype = allowedTypes.test(file.mimetype);
-    if (mimetype && extname) {
-      return cb(null, true);
-    }
+
+    if (mimetype && extname) return cb(null, true);
     cb(new Error('Only image files are allowed!'));
   }
 });
 
-// Create product
+// =====================================
+// CREATE PRODUCT
+// =====================================
 router.post('/', protectSeller, upload.single('image'), async (req, res) => {
   try {
     const { title, name, authorName, description, price, originalPrice, category } = req.body;
-    
+
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'Product image is required' });
     }
@@ -50,72 +53,78 @@ router.post('/', protectSeller, upload.single('image'), async (req, res) => {
       category,
       image: `/uploads/products/${req.file.filename}`,
       createdBy: req.seller._id,
+
+      // ⭐ FIX: This prevents products from showing as courses
+      type: "product"
     });
 
     res.status(201).json({ success: true, data: product });
+
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
 });
 
-// Get all products with optional filters
+// =====================================
+// GET ALL PRODUCTS (PUBLIC)
+// =====================================
 router.get('/', async (req, res) => {
   try {
-    const { category, minPrice, maxPrice, search } = req.query;
-    let query = {};
-
-    if (category) query.category = category;
-    if (minPrice || maxPrice) {
-      query.price = {};
-      if (minPrice) query.price.$gte = parseFloat(minPrice);
-      if (maxPrice) query.price.$lte = parseFloat(maxPrice);
-    }
-    if (search) {
-      query.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { name: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-      ];
-    }
-
-    const products = await Product.find(query).populate('createdBy', 'name email').sort({ createdAt: -1 });
-    res.json({ success: true, count: products.length, data: products });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// Get products by seller ID - MUST BE BEFORE /:id route
-router.get('/seller/:sellerId', async (req, res) => {
-  try {
-    const products = await Product.find({ createdBy: req.params.sellerId })
+    const products = await Product.find({ type: "product" })
       .populate('createdBy', 'name email')
       .sort({ createdAt: -1 });
-    
-    res.json({ 
-      success: true, 
-      data: products,
-      count: products.length 
-    });
+
+    res.json({ success: true, data: products, count: products.length });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// Get single product by ID
+// =====================================
+// GET PRODUCTS BY SELLER
+// =====================================
+router.get('/seller/:sellerId', async (req, res) => {
+  try {
+    const products = await Product.find({
+      createdBy: req.params.sellerId,
+      type: "product" // ⭐ FIX
+    })
+      .populate('createdBy', 'name email')
+      .sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      data: products,
+      count: products.length
+    });
+
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// =====================================
+// GET SINGLE PRODUCT
+// =====================================
 router.get('/:id', async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id).populate('createdBy', 'name email');
+    const product = await Product.findById(req.params.id)
+      .populate('createdBy', 'name email');
+
     if (!product) {
       return res.status(404).json({ success: false, message: 'Product not found' });
     }
+
     res.json({ success: true, data: product });
+
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// Update product
+// =====================================
+// UPDATE PRODUCT
+// =====================================
 router.put('/:id', protectSeller, upload.single('image'), async (req, res) => {
   try {
     let product = await Product.findById(req.params.id);
@@ -142,14 +151,21 @@ router.put('/:id', protectSeller, upload.single('image'), async (req, res) => {
       updateData.image = `/uploads/products/${req.file.filename}`;
     }
 
-    product = await Product.findByIdAndUpdate(req.params.id, updateData, { new: true, runValidators: true });
+    product = await Product.findByIdAndUpdate(req.params.id, updateData, {
+      new: true,
+      runValidators: true
+    });
+
     res.json({ success: true, data: product });
+
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
 });
 
-// Delete product
+// =====================================
+// DELETE PRODUCT
+// =====================================
 router.delete('/:id', protectSeller, async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
@@ -163,7 +179,9 @@ router.delete('/:id', protectSeller, async (req, res) => {
     }
 
     await product.deleteOne();
+
     res.json({ success: true, message: 'Product deleted successfully' });
+
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

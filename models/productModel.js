@@ -39,6 +39,11 @@ const productSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Product image is required'],
   },
+  type: {
+    type: String,
+    enum: ['product', 'course'],
+    default: 'product',
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

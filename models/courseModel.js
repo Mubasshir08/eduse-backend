@@ -52,6 +52,11 @@ const courseSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  type: {
+    type: String,
+    enum: ['course', 'product'],
+    default: 'course',
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

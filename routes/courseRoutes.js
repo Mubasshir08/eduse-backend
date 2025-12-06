@@ -1,46 +1,48 @@
 import express from 'express';
-import Product from '../models/productModel.js';
+import Course from '../models/courseModel.js';
 import { protectSeller } from '../middleware/sellerAuthMiddleware.js';
 import multer from 'multer';
 import path from 'path';
 
 const router = express.Router();
 
-// Configure multer
+// ==============================
+// MULTER CONFIG
+// ==============================
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/products/');
+    cb(null, 'uploads/courses/');
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'product-' + uniqueSuffix + path.extname(file.originalname));
+    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    cb(null, 'course-' + unique + path.extname(file.originalname));
   }
 });
 
 const upload = multer({
-  storage: storage,
+  storage,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|gif|webp/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
-    if (mimetype && extname) {
-      return cb(null, true);
-    }
+    const allowed = /jpeg|jpg|png|gif|webp/;
+    const ext = allowed.test(path.extname(file.originalname).toLowerCase());
+    const mime = allowed.test(file.mimetype);
+    if (mime && ext) return cb(null, true);
     cb(new Error('Only image files are allowed!'));
   }
 });
 
-// Create product
+// ==============================
+// CREATE COURSE
+// ==============================
 router.post('/', protectSeller, upload.single('image'), async (req, res) => {
   try {
     const { title, name, authorName, description, price, originalPrice, category } = req.body;
-    
+
     if (!req.file) {
-      return res.status(400).json({ success: false, message: 'Product image is required' });
+      return res.status(400).json({ success: false, message: 'Course image is required' });
     }
 
-    const product = await Product.create({
+    const course = await Course.create({
       title,
       name,
       authorName,
@@ -48,122 +50,122 @@ router.post('/', protectSeller, upload.single('image'), async (req, res) => {
       price: parseFloat(price),
       originalPrice: parseFloat(originalPrice || price),
       category,
-      image: `/uploads/products/${req.file.filename}`,
+      image: `/uploads/courses/${req.file.filename}`,
       createdBy: req.seller._id,
+      type: "course"
     });
 
-    res.status(201).json({ success: true, data: product });
+    res.status(201).json({ success: true, data: course });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
 });
 
-// Get all products with optional filters
+// ==============================
+// GET ALL COURSES
+// ==============================
 router.get('/', async (req, res) => {
   try {
-    const { category, minPrice, maxPrice, search } = req.query;
-    let query = {};
-
-    if (category) query.category = category;
-    if (minPrice || maxPrice) {
-      query.price = {};
-      if (minPrice) query.price.$gte = parseFloat(minPrice);
-      if (maxPrice) query.price.$lte = parseFloat(maxPrice);
-    }
-    if (search) {
-      query.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { name: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-      ];
-    }
-
-    const products = await Product.find(query).populate('createdBy', 'name email').sort({ createdAt: -1 });
-    res.json({ success: true, count: products.length, data: products });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// Get products by seller ID - MUST BE BEFORE /:id route
-router.get('/seller/:sellerId', async (req, res) => {
-  try {
-    const products = await Product.find({ createdBy: req.params.sellerId })
+    const courses = await Course.find()
       .populate('createdBy', 'name email')
       .sort({ createdAt: -1 });
-    
-    res.json({ 
-      success: true, 
-      data: products,
-      count: products.length 
-    });
+
+    res.json({ success: true, count: courses.length, data: courses });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// Get single product by ID
+// ==============================
+// GET COURSES BY SELLER ID
+// ==============================
+router.get('/seller/:sellerId', async (req, res) => {
+  try {
+    const courses = await Course.find({
+      createdBy: req.params.sellerId,
+      type: "course"
+    })
+      .populate('createdBy', 'name email')
+      .sort({ createdAt: -1 });
+
+    res.json({ success: true, data: courses, count: courses.length });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==============================
+// GET SINGLE COURSE
+// ==============================
 router.get('/:id', async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id).populate('createdBy', 'name email');
-    if (!product) {
-      return res.status(404).json({ success: false, message: 'Product not found' });
+    const course = await Course.findById(req.params.id)
+      .populate('createdBy', 'name email');
+
+    if (!course) {
+      return res.status(404).json({ success: false, message: 'Course not found' });
     }
-    res.json({ success: true, data: product });
+
+    res.json({ success: true, data: course });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// Update product
+// ==============================
+// UPDATE COURSE
+// ==============================
 router.put('/:id', protectSeller, upload.single('image'), async (req, res) => {
   try {
-    let product = await Product.findById(req.params.id);
+    let course = await Course.findById(req.params.id);
 
-    if (!product) {
-      return res.status(404).json({ success: false, message: 'Product not found' });
+    if (!course) {
+      return res.status(404).json({ success: false, message: 'Course not found' });
     }
 
-    if (product.createdBy.toString() !== req.seller._id.toString()) {
+    if (course.createdBy.toString() !== req.seller._id.toString()) {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
     const updateData = {
-      title: req.body.title || product.title,
-      name: req.body.name || product.name,
-      authorName: req.body.authorName || product.authorName,
-      description: req.body.description || product.description,
-      price: req.body.price ? parseFloat(req.body.price) : product.price,
-      originalPrice: req.body.originalPrice ? parseFloat(req.body.originalPrice) : product.originalPrice,
-      category: req.body.category || product.category,
+      title: req.body.title || course.title,
+      name: req.body.name || course.name,
+      authorName: req.body.authorName || course.authorName,
+      description: req.body.description || course.description,
+      price: req.body.price ? parseFloat(req.body.price) : course.price,
+      originalPrice: req.body.originalPrice ? parseFloat(req.body.originalPrice) : course.originalPrice,
+      category: req.body.category || course.category
     };
 
     if (req.file) {
-      updateData.image = `/uploads/products/${req.file.filename}`;
+      updateData.image = `/uploads/courses/${req.file.filename}`;
     }
 
-    product = await Product.findByIdAndUpdate(req.params.id, updateData, { new: true, runValidators: true });
-    res.json({ success: true, data: product });
+    course = await Course.findByIdAndUpdate(req.params.id, updateData, { new: true, runValidators: true });
+
+    res.json({ success: true, data: course });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
 });
 
-// Delete product
+// ==============================
+// DELETE COURSE
+// ==============================
 router.delete('/:id', protectSeller, async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id);
+    const course = await Course.findById(req.params.id);
 
-    if (!product) {
-      return res.status(404).json({ success: false, message: 'Product not found' });
+    if (!course) {
+      return res.status(404).json({ success: false, message: 'Course not found' });
     }
 
-    if (product.createdBy.toString() !== req.seller._id.toString()) {
+    if (course.createdBy.toString() !== req.seller._id.toString()) {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-    await product.deleteOne();
-    res.json({ success: true, message: 'Product deleted successfully' });
+    await course.deleteOne();
+    res.json({ success: true, message: 'Course deleted successfully' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

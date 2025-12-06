@@ -32,9 +32,14 @@ router.get('/stats', authMiddleware, isAdmin, async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(5);
 
+      const recentSellers = await Seller.find()
+      .select('-password')
+      .sort({ createdAt: -1 })
+      .limit(5);
+
     res.json({
       stats: {
-        totalUsers,
+        totalUsers : totalUsers + recentSellers.length,
         totalCourses,
         totalProducts,
       },
@@ -59,6 +64,30 @@ router.get('/users', authMiddleware, isAdmin, async (req, res) => {
       .skip(skip)
       .limit(limit);
 
+    // Total count of users
+    const totalUsersCount = await User.countDocuments();
+
+    res.json({
+      users,
+      pagination: {
+        total: totalUsersCount,
+        page,
+        pages: Math.ceil(totalUsersCount / limit),
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// ================= Sellers =================
+router.get('/sellers', authMiddleware, isAdmin, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
     // Fetch sellers
     const sellers = await Seller.find()
       .sort({ createdAt: -1 })
@@ -66,38 +95,39 @@ router.get('/users', authMiddleware, isAdmin, async (req, res) => {
       .limit(limit)
       .lean();
 
-    // Add role field to sellers (so front-end can display)
+    // Add role field to sellers
     const sellersWithRole = sellers.map((seller) => ({
       ...seller,
       role: 'seller',
     }));
 
-    // Merge users + sellers
-    const allUsers = [...users, ...sellersWithRole];
-
-    // Sort merged users by createdAt descending
-    allUsers.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-    // Total count
-    const totalUsersCount =
-      (await User.countDocuments()) + (await Seller.countDocuments());
-
-    // Pagination (calculate pages based on total count)
-    const totalPages = Math.ceil(totalUsersCount / limit);
-
-    // Slice the merged array for current page
-    const paginatedUsers = allUsers.slice(skip, skip + limit);
+    // Total count of sellers
+    const totalSellersCount = await Seller.countDocuments();
 
     res.json({
-      users: paginatedUsers,
+      sellers: sellersWithRole, // keep 'users' key for frontend compatibility
       pagination: {
-        total: totalUsersCount,
+        total: totalSellersCount,
         page,
-        pages: totalPages,
+        pages: Math.ceil(totalSellersCount / limit),
       },
     });
   } catch (error) {
     console.error(error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+router.delete('/sellers/:id', authMiddleware, isAdmin, async (req, res) => {
+  try {
+    const seller = await Seller.findById(req.params.id);
+    if (!seller) return res.status(404).json({ message: 'Seller not found' });
+    if (seller._id.toString() === req.user.id)
+      return res.status(400).json({ message: 'Cannot delete your own account' });
+
+    await Seller.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Seller deleted successfully' });
+  } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
